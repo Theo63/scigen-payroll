@@ -1,0 +1,15 @@
+{
+  "name": "scigen-payroll",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Work log, monthly pay and expenses tracker (replaces the Scigen Time Records Google Sheet). Static site for GitHub Pages; encrypted data in a private GitHub repository.",
+  "type": "module",
+  "scripts": {
+    "test": "node --test tests/*.test.mjs",
+    "parse-sheet": "node scripts/parse-sheet.mjs",
+    "serve": "node scripts/serve.mjs"
+  },
+  "devDependencies": {
+    "node-html-parser": "^6.1.13"
+  }
+}
