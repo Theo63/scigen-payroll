@@ -2,7 +2,7 @@
 // plus a random data key wrapped once per account so each account has its own password.
 // Works in the browser and in Node (globalThis.crypto).
 
-export const PBKDF2_ITERS = 310000;
+export const PBKDF2_ITERS = 600000; // OWASP 2023 recommendation for PBKDF2-SHA256
 const subtle = globalThis.crypto.subtle;
 const te = new TextEncoder();
 const td = new TextDecoder();

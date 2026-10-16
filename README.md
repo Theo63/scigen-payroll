@@ -5,7 +5,7 @@ Work log, monthly pay and expenses for Scigen, replacing the "Scigen Time Record
 - Log date, task, start, finish → minutes and hours are computed.
 - Each month: hours worked × hourly rate = pay (manual "hours to be paid" or rate per month when needed).
 - Expenses are subtracted: **earned − paid = remaining**.
-- Two accounts with their own passwords; data encrypted in a private GitHub repository.
+- Two accounts that sign in with just name + password; data encrypted in a private GitHub repository.
 
 Static site (plain HTML/CSS/JS, no build step) hosted on GitHub Pages. See **[SETUP.md](SETUP.md)**.
 

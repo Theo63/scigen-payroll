@@ -36,3 +36,11 @@ test('typed times are 24-hour HH:MM', () => {
   assert.equal(parseTime24('25:00'), null);
   assert.equal(parseTime24('12:60'), null);
 });
+
+test('date-times are dd/mm/yyyy HH:MM (24-hour, local time)', async () => {
+  const { dateTimeLabel } = await import('../js/format.js');
+  const local = new Date(2026, 9, 16, 18, 5);
+  assert.equal(dateTimeLabel(local.toISOString()), '16/10/2026 18:05');
+  assert.equal(dateTimeLabel(new Date(2026, 0, 2, 0, 0).toISOString()), '02/01/2026 00:00');
+  assert.equal(dateTimeLabel(''), '');
+});

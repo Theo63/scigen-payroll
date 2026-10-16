@@ -1,7 +1,9 @@
 // Minimal GitHub Contents API client for one file in the private data repository.
-export const DATA_REPO = 'scigen-payroll-data';
+export const DATA_REPO = 'scigen-payroll-data'; // private: the encrypted database
+export const SITE_REPO = 'scigen-payroll'; // public: this site + auth.json
 export const BRANCH = 'main';
 export const DB_FILE = 'data.json';
+export const AUTH_FILE = 'auth.json';
 const LS_OWNER = 'sp-gh-owner';
 
 const te = new TextEncoder();
@@ -85,4 +87,28 @@ export class GitHubApi {
   putText(path, text, sha, message) {
     return this.putFile(path, te.encode(text), sha, message);
   }
+}
+
+/**
+ * Reads a JSON file from the public site repository without a token.
+ * Uses the GitHub API first (always fresh), then the copy served by GitHub Pages.
+ * Returns null when the file does not exist or cannot be read.
+ */
+export async function fetchPublicJSON({ owner, repo = SITE_REPO, path = AUTH_FILE, fetchFn = globalThis.fetch.bind(globalThis) }) {
+  try {
+    const res = await fetchFn(`https://api.github.com/repos/${owner}/${repo}/contents/${path}?ref=${BRANCH}`, {
+      cache: 'no-store',
+      headers: { Accept: 'application/vnd.github+json', 'X-GitHub-Api-Version': '2022-11-28' },
+    });
+    if (res.status === 404) return null;
+    if (res.ok) {
+      const j = await res.json();
+      return JSON.parse(new TextDecoder().decode(b64dec(j.content || '')));
+    }
+  } catch { /* fall back to the Pages copy */ }
+  try {
+    const res = await fetchFn(`${path}?t=${Date.now()}`, { cache: 'no-store' });
+    if (res.ok) return await res.json();
+  } catch { /* not available */ }
+  return null;
 }

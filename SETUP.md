@@ -5,8 +5,11 @@ Same idea as the sinentefksi app: no server and no extra service.
 - **`scigen-payroll`** (public repository) – this code, served by GitHub Pages.
 - **`scigen-payroll-data`** (private repository) – one file, `data.json`, encrypted with AES-256.
   Only a GitHub token with access to this repository can read or write it.
-- **Two accounts**, each with its own password. A password unlocks the encryption key for the data
-  and the GitHub token saved in that browser. Every change becomes a commit in the data repository,
+- **`auth.json`** (in the public repository, written by the app) – the GitHub token and the data key,
+  locked with each account's password. This is what lets everyone sign in with **just account name +
+  password** on any device. Nothing in it is readable without a password, but because the file is
+  public, use long passwords (the app requires at least 12 characters).
+- **Two accounts**, each with its own password. Every change becomes a commit in the data repository,
   so you get a full history for free.
 
 Takes about 15 minutes, once.
@@ -26,16 +29,17 @@ Takes about 15 minutes, once.
 1. Open https://github.com/settings/personal-access-tokens/new (Settings → Developer settings →
    Personal access tokens → **Fine-grained tokens** → Generate new token).
 2. Token name: `scigen-payroll`. Expiration: the longest you are comfortable with (when it expires,
-   you just make a new one and use “Set up this device” again).
-3. Repository access: **Only select repositories** → choose `scigen-payroll-data` only.
-4. Permissions → Repository permissions → **Contents: Read and write**. (Metadata: Read-only is added automatically.)
+   use Settings → Sign-in → **Replace the GitHub token**).
+3. Repository access: **Only select repositories** → choose **both** `scigen-payroll-data` and `scigen-payroll`.
+4. Permissions → **Add permissions** → tick **Contents** → set it to **Read and write**.
+   (Metadata: Read-only is added automatically.)
 5. **Generate token** and copy it (`github_pat_…`). GitHub shows it only once; keep it in your password manager.
 
-Tip: you can instead edit the token you already use for sinentefksi and add `scigen-payroll-data`
-to its repositories. Either way works.
+Only you need the token, and only once. The second person never needs it.
 
-The second account needs a token too. Either give them the same token, or (better) create a second
-token the same way, so you can revoke one without affecting the other.
+**Already made a token with only `scigen-payroll-data`?** Open
+https://github.com/settings/personal-access-tokens, click the token → **Edit** → Repository access →
+add `scigen-payroll` → **Update**. Then in the site: Settings → Sign-in → **Try again**.
 
 ## 3. Publish the site
 
@@ -54,10 +58,11 @@ token the same way, so you can revoke one without affecting the other.
 
 ## 4. First sign-in creates the database
 
-1. Open the site. It shows **Set up this device**.
-2. Paste the token, choose an account name (e.g. `theodore`) and a password (at least 8 characters).
-3. Press **Continue**. Since `data.json` does not exist yet, it asks you to confirm the password and
-   press **Create database**.
+1. Open the site, type an account name (e.g. `theodore`) and a password (at least 12 characters), press **Sign in**.
+2. The first time, it says password-only sign-in is not set up yet and asks for the **GitHub token**. Paste it.
+3. Since `data.json` does not exist yet, confirm the password and press **Create database**.
+4. The app writes `auth.json` to the public repository. Settings → Sign-in shows
+   “Password-only sign-in is on”. From now on: name + password only, on any device.
 
 ## 5. Import the Google Sheet history
 
@@ -77,14 +82,12 @@ token the same way, so you can revoke one without affecting the other.
 
 ## 6. Add the second account
 
-1. **Settings → Accounts → Add an account**: name + password.
-2. The other person opens the site, clicks **Set up this device for another account**, and enters a
-   token (step 2), that name and that password.
+1. **Settings → Accounts → Add an account**: name + password (at least 12 characters).
+2. Tell that person the site address, the name and the password. They just sign in. No token.
 
 ## Everyday use
 
-- Each browser asks for the token only once. After that it is just account + password.
-- The session lasts until the tab is closed or you press **Sign out**.
+- Sign in with account name + password. The session lasts until the tab is closed or you press **Sign out**.
 - Both accounts can edit at the same time. A save always re-reads the latest data first, and GitHub
   rejects a stale write, which the app retries, so nobody overwrites the other.
 - Open tabs refresh when you come back to them and every 2 minutes.
@@ -94,11 +97,11 @@ token the same way, so you can revoke one without affecting the other.
 | Situation | What to do |
 |---|---|
 | Rate goes up | Settings → Hourly rate → **+ Add rate change** with the month it starts |
-| Token expired or revoked | Make a new token (step 2) → on the login screen, **Set up this device** |
-| Changed your password | Other browsers: **Set up this device** with the new password |
-| Lost a password | The other account removes it in Settings → Accounts and adds it again |
+| Token expires or you make a new one | Settings → Sign-in → **Replace the GitHub token**. If you can't sign in anymore: on the sign-in screen use **Sign in with a GitHub token** with the new token |
+| Change your own password | Settings → Accounts → **Change my password** (works everywhere right away) |
+| The other person forgot their password | Settings → Accounts → **Set password** next to their name |
+| Someone should lose access | Settings → Accounts → **Remove**. If they ever saw the token, also replace the token |
 | Backup | Settings → Data → **Download full backup (JSON)** (also importable) |
-| Someone else's computer | Settings → This device → **Forget this device** when done |
 
 ## Preview locally (optional)
 
@@ -106,7 +109,7 @@ token the same way, so you can revoke one without affecting the other.
 npm run serve
 ```
 Then open http://localhost:5173/?demo – the real app against a fake GitHub kept in the browser,
-with the imported sheet (account `demo`, password `demo1234`). Nothing is sent to GitHub.
+with the imported sheet (account `demo`, password `demo-password-1`). Nothing is sent to GitHub.
 
 ## Tests
 

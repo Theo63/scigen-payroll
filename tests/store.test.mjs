@@ -13,7 +13,8 @@ function setup() {
   return { fake, api };
 }
 const td = new TextDecoder();
-const envOf = (fake) => parseEnvelope(Buffer.from(fake.files['data.json'].content, 'base64'));
+const DATA = 'scigen-payroll-data/data.json';
+const envOf = (fake) => parseEnvelope(Buffer.from(fake.files[DATA].content, 'base64'));
 
 test('database is encrypted at rest: no plaintext task or amount in data.json', async () => {
   const { fake, api } = setup();
@@ -21,7 +22,7 @@ test('database is encrypted at rest: no plaintext task or amount in data.json', 
   const s = createStore({ api: api(), dataKey: key, account: 'Theodore' });
   await s.addEntry({ date: '2026-10-16', task: 'SECRET-TASK-TEXT', start: '10:00', finish: '12:00', minutes: 120 });
   await s.addExpense({ date: '2026-10-16', amount: 1234.56, description: 'SECRET-EXPENSE' });
-  const raw = td.decode(Buffer.from(fake.files['data.json'].content, 'base64'));
+  const raw = td.decode(Buffer.from(fake.files[DATA].content, 'base64'));
   assert.ok(!raw.includes('SECRET'), 'plaintext leaked');
   assert.ok(!raw.includes('1234.56'), 'amount leaked');
   assert.ok(raw.includes('"app":"scigen-payroll"'));
@@ -29,16 +30,16 @@ test('database is encrypted at rest: no plaintext task or amount in data.json', 
 
 test('each account opens the database with its own password only', async () => {
   const { fake, api } = setup();
-  const key = await createDatabase(api(), { name: 'Theodore', password: 'pass-one-1', generateDataKey });
+  const key = await createDatabase(api(), { name: 'Theodore', password: 'pass-one-long-1', generateDataKey });
   const s = createStore({ api: api(), dataKey: key, account: 'Theodore' });
-  await s.addAccount('Maria', 'pass-two-2');
+  await s.addAccount('Maria', 'pass-two-long-2');
   const env = envOf(fake);
   assert.deepEqual(Object.keys(env.users).sort(), ['maria', 'theodore']);
-  assert.ok(await openSlot(env.users.theodore, 'pass-one-1'));
-  assert.ok(await openSlot(env.users.maria, 'pass-two-2'));
-  assert.equal(await openSlot(env.users.maria, 'pass-one-1'), null);
+  assert.ok(await openSlot(env.users.theodore, 'pass-one-long-1'));
+  assert.ok(await openSlot(env.users.maria, 'pass-two-long-2'));
+  assert.equal(await openSlot(env.users.maria, 'pass-one-long-1'), null);
   assert.equal(await openSlot(env.users.theodore, 'wrong'), null);
-  await assert.rejects(s.addAccount('maria', 'whatever-123'), /already exists/);
+  await assert.rejects(s.addAccount('maria', 'whatever-long-123'), /already exists/);
   await assert.rejects(s.removeAccount('Theodore'), /cannot remove/);
   await s.removeAccount('Maria');
   assert.equal(envOf(fake).users[slotKey('Maria')], undefined);
@@ -46,13 +47,13 @@ test('each account opens the database with its own password only', async () => {
 
 test('changing a password keeps the data readable and invalidates the old one', async () => {
   const { fake, api } = setup();
-  const key = await createDatabase(api(), { name: 'Theodore', password: 'old-password', generateDataKey });
+  const key = await createDatabase(api(), { name: 'Theodore', password: 'old-password-long', generateDataKey });
   const s = createStore({ api: api(), dataKey: key, account: 'Theodore' });
   await s.addEntry({ date: '2026-10-01', task: 'x', minutes: 60 });
-  await s.changePassword('new-password');
+  await s.changePassword('new-password-long');
   const slot = envOf(fake).users.theodore;
-  assert.equal(await openSlot(slot, 'old-password'), null);
-  const k2 = await openSlot(slot, 'new-password');
+  assert.equal(await openSlot(slot, 'old-password-long'), null);
+  const k2 = await openSlot(slot, 'new-password-long');
   const s2 = createStore({ api: api(), dataKey: k2, account: 'Theodore' });
   await s2.refresh().catch(() => {});
   const r = await s2.addEntry({ date: '2026-10-02', task: 'y', minutes: 30 });
@@ -61,9 +62,9 @@ test('changing a password keeps the data readable and invalidates the old one', 
 
 test('two accounts editing at the same time: both changes survive (sha conflict → retry)', async () => {
   const { fake, api } = setup();
-  const key = await createDatabase(api(), { name: 'A', password: 'password-a', generateDataKey });
+  const key = await createDatabase(api(), { name: 'A', password: 'password-a-long', generateDataKey });
   const a = createStore({ api: api(), dataKey: key, account: 'A' });
-  await a.addAccount('B', 'password-b');
+  await a.addAccount('B', 'password-b-long');
   const b = createStore({ api: api(), dataKey: key, account: 'B' });
   await Promise.all([
     a.addEntry({ date: '2026-10-01', task: 'from A', minutes: 60 }),
@@ -102,6 +103,29 @@ test('importing the sheet seed through the encrypted store gives the sheet total
   const db = await openEnvelope(envOf(fake), key);
   const sum = summarize({ entries: db.entries, monthDocs: db.months, expenses: db.expenses, settings: db.settings, today: '2026-10' });
   assert.deepEqual([sum.totals.earned, sum.totals.paid, sum.totals.remaining], [7355.48, 6960, 395.48]);
-  const size = fake.files['data.json'].content.length;
+  const size = fake.files[DATA].content.length;
   assert.ok(size < 2_000_000, `data.json is ${size} bytes`);
+});
+
+test('passwords shorter than 12 characters are refused', async () => {
+  const { api } = setup();
+  const key = await createDatabase(api(), { name: 'A', password: 'long-enough-pw', generateDataKey });
+  const s = createStore({ api: api(), dataKey: key, account: 'A' });
+  await assert.rejects(s.addAccount('B', 'short-pw'), /at least 12/);
+  await assert.rejects(s.changePassword('short'), /at least 12/);
+});
+
+test('last sign-in is stored per account inside the encrypted database', async () => {
+  const { fake, api } = setup();
+  const key = await createDatabase(api(), { name: 'Theodore', password: 'long-enough-pw', generateDataKey });
+  const a = createStore({ api: api(), dataKey: key, account: 'Theodore' });
+  await a.addAccount('Maria', 'maria-long-password');
+  const before = Date.now();
+  await a.recordLogin();
+  const { openEnvelope } = await import('../js/crypto.js');
+  const db = await openEnvelope(envOf(fake), key);
+  assert.ok(Date.parse(db.logins.theodore) >= before);
+  assert.equal(db.logins.maria, undefined);
+  const raw = td.decode(Buffer.from(fake.files[DATA].content, 'base64'));
+  assert.ok(!raw.includes('logins'), 'sign-in times are not readable from the file');
 });

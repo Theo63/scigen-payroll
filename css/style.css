@@ -350,3 +350,14 @@ dialog::backdrop { background: rgba(10, 14, 18, .45); }
 .native-picker { position: absolute; right: 0; bottom: 0; width: 1px; height: 1px; opacity: 0; pointer-events: none; border: 0; padding: 0; }
 input.invalid { border-color: var(--danger); box-shadow: 0 0 0 3px color-mix(in srgb, var(--danger) 18%, transparent); }
 .log-table .wd { color: var(--muted); display: inline-block; width: 2.1em; }
+
+/* ------------------------------------------------------------ sign-in status */
+.status { border-radius: var(--radius-sm); padding: .7rem .9rem; margin: 0; }
+.status p { margin: 0 0 .4rem; }
+.status.ok { background: var(--accent-soft); color: var(--text); }
+.status.warn { background: var(--warn-soft); color: var(--text); }
+.status .steps { margin: .4rem 0 0; }
+.spinner.inline { display: inline-block; width: .9rem; height: .9rem; vertical-align: -2px; margin-right: .35rem; }
+.token-form { margin-top: 1.1rem; padding-top: 1rem; border-top: 1px solid var(--border); }
+.token-form p { margin: 0 0 .6rem; }
+.token-form input[type=password] { max-width: 420px; }

@@ -23,6 +23,7 @@ let session = null; // { name, api, dataKey, token }
 let store = null;
 let data = null;
 let unsubscribe = null;
+let authStatus = null; // result of the last auth.json check
 let current = { key: null, view: null, el: null };
 
 // ---------------------------------------------------------------- screens
@@ -38,26 +39,21 @@ function showLoading(text = 'Loading…') {
 const brand = '<div class="brand big"><span class="logo">S</span><span>Scigen Payroll</span></div>';
 
 function showLogin(message = '') {
-  const known = auth.deviceAccounts();
-  if (!known.length) { showSetup(); return; }
   screen(`
     <main class="center-screen">
       <form class="card narrow login" autocomplete="on">
         ${brand}
-        <label>Account
-          ${known.length === 1
-            ? `<input type="text" name="name" value="${esc(known[0])}" autocomplete="username" required>`
-            : `<select name="name" autocomplete="username">${known.map((n) => `<option>${esc(n)}</option>`).join('')}</select>`}
-        </label>
-        <label>Password<input type="password" name="password" autocomplete="current-password" required autofocus></label>
+        <label>Account<input type="text" name="name" value="${esc(auth.lastAccount())}" autocomplete="username"
+          autocapitalize="none" spellcheck="false" required></label>
+        <label>Password<input type="password" name="password" autocomplete="current-password" required></label>
         <p class="error" role="alert">${esc(message)}</p>
         <button class="btn primary block" type="submit">Sign in</button>
-        <button class="link small" type="button" data-action="setup">Set up this device for another account or a new token</button>
+        <button class="link small" type="button" data-action="setup">Sign in with a GitHub token (first time or new token)</button>
       </form>
     </main>`);
   const form = root.querySelector('form');
   const err = form.querySelector('.error');
-  form.elements.password.focus();
+  (form.elements.name.value ? form.elements.password : form.elements.name).focus();
   form.addEventListener('submit', async (ev) => {
     ev.preventDefault();
     const btn = form.querySelector('[type=submit]');
@@ -66,7 +62,7 @@ function showLogin(message = '') {
     btn.textContent = 'Unlocking…';
     try {
       session = await auth.login(form.elements.name.value.trim(), form.elements.password.value);
-      startData();
+      startData({ freshLogin: true });
     } catch (e) {
       if (e.needsSetup) { showSetup({ name: form.elements.name.value.trim(), message: e.message }); return; }
       err.textContent = e.message;
@@ -74,7 +70,7 @@ function showLogin(message = '') {
       btn.textContent = 'Sign in';
     }
   });
-  form.querySelector('[data-action=setup]').addEventListener('click', () => showSetup());
+  form.querySelector('[data-action=setup]').addEventListener('click', () => showSetup({ name: form.elements.name.value.trim() }));
 }
 
 function showSetup({ name = '', message = '' } = {}) {
@@ -83,8 +79,8 @@ function showSetup({ name = '', message = '' } = {}) {
     <main class="center-screen">
       <form class="card narrow login setup" autocomplete="off">
         ${brand}
-        <h1>Set up this device</h1>
-        <p class="muted small">Needed once per browser. The token is stored here encrypted with your password and never leaves this device in clear.</p>
+        <h1>Sign in with a GitHub token</h1>
+        <p class="muted small">Only needed the very first time, or when the token is replaced. After that, everyone signs in with just their account name and password.</p>
         ${owner ? '' : '<label>GitHub user that owns the repositories<input type="text" name="owner" placeholder="e.g. Theo63" required></label>'}
         <label>GitHub token
           <input type="password" name="token" placeholder="github_pat_…" required autocomplete="off">
@@ -97,7 +93,7 @@ function showSetup({ name = '', message = '' } = {}) {
         </div>
         <p class="error" role="alert">${esc(message)}</p>
         <button class="btn primary block" type="submit">Continue</button>
-        ${auth.deviceAccounts().length ? '<button class="link small" type="button" data-action="back">Back to sign in</button>' : ''}
+        <button class="link small" type="button" data-action="back">Back to sign in</button>
       </form>
     </main>`);
   const form = root.querySelector('form');
@@ -113,11 +109,11 @@ function showSetup({ name = '', message = '' } = {}) {
     btn.disabled = true;
     try {
       if (creating) {
-        if (f.password.value.length < 8) throw new Error('Use a password of at least 8 characters.');
+        if (f.password.value.length < auth.MIN_PASSWORD) throw new Error(`Use a password of at least ${auth.MIN_PASSWORD} characters.`);
         if (f.password.value !== f.password2.value) throw new Error('The passwords do not match.');
         session = await auth.createNew({ token: f.token.value, name: f.name.value, password: f.password.value });
         toast('Encrypted database created');
-        startData();
+        startData({ freshLogin: true });
         return;
       }
       const r = await auth.setupDevice({
@@ -132,14 +128,13 @@ function showSetup({ name = '', message = '' } = {}) {
         return;
       }
       session = r;
-      startData();
+      startData({ freshLogin: true });
     } catch (e) {
       err.textContent = e.message;
       btn.disabled = false;
     }
   });
-  const back = form.querySelector('[data-action=back]');
-  if (back) back.addEventListener('click', () => showLogin());
+  form.querySelector('[data-action=back]').addEventListener('click', () => showLogin());
 }
 
 function showLoadError(e) {
@@ -148,10 +143,10 @@ function showLoadError(e) {
       <div class="card narrow">
         <h1>Could not open the database</h1>
         <p>${esc(e.message || String(e))}</p>
-        ${e.ghAuth ? '<p class="muted small">If the GitHub token expired or was replaced, set up this device again with the new token.</p>' : ''}
+        ${e.ghAuth ? '<p class="muted small">If the GitHub token expired or was replaced, sign in with the new token.</p>' : ''}
         <div class="form-actions">
           <button class="btn ghost" data-action="signout">Sign out</button>
-          ${e.ghAuth ? '<button class="btn ghost" data-action="setup">Set up this device</button>' : ''}
+          ${e.ghAuth ? '<button class="btn ghost" data-action="setup">Sign in with a new token</button>' : ''}
           <button class="btn primary" data-action="retry">Try again</button>
         </div>
       </div>
@@ -199,8 +194,18 @@ function buildCtx(param) {
     rateFor: (m) => rateFor(m, s.rates),
     signOut: () => signOut(),
     changePassword: async (newPassword) => {
-      await store.changePassword(newPassword);
-      await auth.reencryptDeviceToken(session.name, newPassword, session.token);
+      try {
+        await store.changePassword(newPassword);
+      } finally {
+        await auth.reencryptDeviceToken(session.name, newPassword, session.token);
+      }
+    },
+    authStatus,
+    retryAuthSync: () => runAuthSync(true),
+    replaceToken: async (newToken) => {
+      session = await auth.replaceToken(session, newToken, store.getUsers());
+      store = null;
+      startData();
     },
     forgetDevice: () => { auth.forgetDevice(session.name); signOut(); },
   };
@@ -227,14 +232,24 @@ function render() {
 window.addEventListener('hashchange', render);
 
 // ---------------------------------------------------------------- data
-function startData() {
+function startData({ freshLogin = false } = {}) {
   if (unsubscribe) unsubscribe();
   data = null;
   showLoading('Loading your records…');
-  store = auth.createStore(session);
+  store = auth.createStore({ ...session, onUsersChanged: (users) => auth.publishAuth(session, users) });
+  authStatus = null;
   let failedFirst = false;
+  let synced = false;
   unsubscribe = store.subscribeAll(
-    (d) => { data = d; render(); },
+    (d) => {
+      data = d;
+      render();
+      if (!synced && d.ready) {
+        synced = true;
+        runAuthSync(false);
+        if (freshLogin) store.recordLogin().catch((e) => console.warn('Could not record sign-in', e));
+      }
+    },
     (e) => {
       console.error(e);
       if (!data || !data.ready) {
@@ -246,6 +261,17 @@ function startData() {
       }
     },
   );
+}
+
+/** Keeps auth.json (password-only sign-in) in step with the accounts in the database. */
+async function runAuthSync(manual) {
+  if (!store || !session) return;
+  authStatus = { checking: true };
+  render();
+  authStatus = await auth.syncAuth(session, store.getUsers());
+  if (!authStatus.ok && !manual) toast(`Password-only sign-in is off: ${authStatus.message}`, 'error');
+  if (manual && authStatus.ok) toast('Password-only sign-in is on');
+  render();
 }
 
 function signOut(reload = true) {
@@ -266,7 +292,10 @@ async function boot() {
     document.title = 'Scigen Payroll (demo)';
   }
   const [sessionMod, storeMod] = await Promise.all([import('./session.js'), import('./store.js')]);
-  auth = { ...sessionMod, createStore: ({ api, dataKey, name }) => storeMod.createStore({ api, dataKey, account: name }) };
+  auth = {
+    ...sessionMod,
+    createStore: ({ api, dataKey, name, onUsersChanged }) => storeMod.createStore({ api, dataKey, account: name, onUsersChanged }),
+  };
   session = await auth.resumeSession();
   if (session) startData();
   else showLogin();

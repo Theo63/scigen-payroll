@@ -6,6 +6,13 @@ import { DB_FILE } from './github.js';
 import { sealEnvelope, parseEnvelope, openEnvelope, makeSlot, slotKey, uuid } from './crypto.js';
 import { DEFAULT_SETTINGS, withDefaults } from './calc.js';
 
+export const MIN_PASSWORD = 12;
+function checkPassword(pw) {
+  if (!pw || pw.length < MIN_PASSWORD) {
+    throw new Error(`Use a password of at least ${MIN_PASSWORD} characters (a few words together works well).`);
+  }
+}
+
 export function emptyDB() {
   return { version: 1, settings: structuredClone(DEFAULT_SETTINGS), months: {}, entries: [], expenses: [] };
 }
@@ -17,6 +24,7 @@ export function normalizeDB(d = {}) {
     months: d.months && typeof d.months === 'object' ? d.months : {},
     entries: Array.isArray(d.entries) ? d.entries : [],
     expenses: Array.isArray(d.expenses) ? d.expenses : [],
+    logins: d.logins && typeof d.logins === 'object' ? d.logins : {}, // account key -> ISO time of last sign-in
   };
 }
 
@@ -41,8 +49,10 @@ function expenseFields(x) {
 
 /**
  * api: GitHubApi, dataKey: CryptoKey, account: the signed-in account name.
+ * onUsersChanged(users): called after an account was added, removed or got a new
+ * password, to update the public sign-in file (auth.json).
  */
-export function createStore({ api, dataKey, account }) {
+export function createStore({ api, dataKey, account, onUsersChanged }) {
   let db = emptyDB();
   let users = {};
   let sha = null;
@@ -54,7 +64,7 @@ export function createStore({ api, dataKey, account }) {
     months: db.months,
     entries: db.entries,
     expenses: db.expenses,
-    accounts: Object.values(users).map((u) => ({ name: u.name, updatedAt: u.updatedAt })),
+    accounts: Object.entries(users).map(([k, u]) => ({ name: u.name, updatedAt: u.updatedAt, lastLogin: db.logins[k] || null })),
     account,
     ready: loadedOnce,
   });
@@ -109,6 +119,18 @@ export function createStore({ api, dataKey, account }) {
     await load();
     if (sha !== before) emit();
   });
+
+  /** Account changes are saved in data.json first, then published to auth.json. */
+  async function accountChange(message, mutate) {
+    await commit(message, (_d, u) => mutate(u));
+    if (onUsersChanged) {
+      try {
+        await onUsersChanged(structuredClone(users));
+      } catch (e) {
+        throw Object.assign(new Error(`Saved, but password-only sign-in was not updated: ${e.message}`), { partial: true, cause: e });
+      }
+    }
+  }
 
   const findIdx = (list, id) => {
     const i = list.findIndex((x) => x.id === id);
@@ -192,24 +214,35 @@ export function createStore({ api, dataKey, account }) {
       };
     },
 
+    /** Stores the time of this sign-in (shown as "Last sign-in" in Settings → Accounts). */
+    recordLogin: () => commit('Sign in', (d) => { d.logins[slotKey(account)] = now(); }),
+
     // ---- accounts (key slots). The data key never changes, so no re-encryption is needed.
-    addAccount: (name, password) => commit(`Add account ${name}`, async (_d, u) => {
+    getUsers: () => structuredClone(users),
+    addAccount: (name, password) => accountChange(`Add account ${name}`, async (u) => {
       const k = slotKey(name);
       if (!k) throw new Error('Enter a name for the account.');
       if (u[k]) throw new Error(`An account called “${name}” already exists.`);
-      if (!password || password.length < 8) throw new Error('Use a password of at least 8 characters.');
+      checkPassword(password);
       u[k] = await makeSlot(name.trim(), password, dataKey);
     }),
-    removeAccount: (name) => commit(`Remove account ${name}`, (_d, u) => {
+    removeAccount: (name) => accountChange(`Remove account ${name}`, (u) => {
       const k = slotKey(name);
       if (k === slotKey(account)) throw new Error('You cannot remove the account you are signed in with.');
       if (!u[k]) throw new Error('No such account.');
       delete u[k];
     }),
-    changePassword: (newPassword) => commit('Change password', async (_d, u) => {
-      if (!newPassword || newPassword.length < 8) throw new Error('Use a password of at least 8 characters.');
+    changePassword: (newPassword) => accountChange('Change password', async (u) => {
+      checkPassword(newPassword);
       const k = slotKey(account);
       u[k] = await makeSlot(u[k] ? u[k].name : account, newPassword, dataKey);
+    }),
+    /** Set a new password for any account (e.g. the other person forgot theirs). */
+    setPassword: (name, newPassword) => accountChange(`Set password for ${name}`, async (u) => {
+      const k = slotKey(name);
+      if (!u[k]) throw new Error('No such account.');
+      checkPassword(newPassword);
+      u[k] = await makeSlot(u[k].name, newPassword, dataKey);
     }),
   };
 }

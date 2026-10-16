@@ -72,6 +72,13 @@ export function parseTime24(text) {
 
 export const todayDMY = (now = new Date()) => dateLabel(todayISO(now));
 
+/** ISO timestamp -> "16/10/2026 18:42" in local time (24-hour). */
+export function dateTimeLabel(isoTime) {
+  const dt = new Date(isoTime);
+  if (!isoTime || Number.isNaN(dt.getTime())) return '';
+  return `${pad2(dt.getDate())}/${pad2(dt.getMonth() + 1)}/${dt.getFullYear()} ${pad2(dt.getHours())}:${pad2(dt.getMinutes())}`;
+}
+
 export function todayISO(now = new Date()) {
   const p = (n) => String(n).padStart(2, '0');
   return `${now.getFullYear()}-${p(now.getMonth() + 1)}-${p(now.getDate())}`;

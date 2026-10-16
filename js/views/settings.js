@@ -1,6 +1,6 @@
-import { esc, monthLabel, todayISO, dateLabel } from '../format.js';
+import { esc, monthLabel, todayISO, dateLabel, dateTimeLabel } from '../format.js';
 import { withDefaults, monthOf } from '../calc.js';
-import { busy, toast, download, toCSV, $ } from '../ui.js';
+import { busy, toast, download, toCSV, openDialog, $ } from '../ui.js';
 
 const MONTH_NAMES = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
 
@@ -126,6 +126,18 @@ export default {
             <p class="small" data-slot="import-status"></p>
           </form></article>
 
+        <article class="card"><header class="card-head"><h2>Sign-in</h2></header>
+          <div data-slot="auth-status"></div>
+          <form data-slot="replace-token" autocomplete="off" class="token-form">
+            <h3>Replace the GitHub token</h3>
+            <p class="muted small">When the token expires or you make a new one. It needs Contents: Read and write on both <code>scigen-payroll-data</code> and <code>scigen-payroll</code>.</p>
+            <div class="import-row">
+              <input type="password" name="token" placeholder="github_pat_…" required autocomplete="off">
+              <button type="submit" class="btn small">Replace token</button>
+            </div>
+          </form>
+        </article>
+
         <article class="card"><header class="card-head"><h2>Accounts</h2></header>
           <p class="muted small">Each account has its own password. Both see and edit the same data. Every change is saved as a commit in the private <code>scigen-payroll-data</code> repository, so its history is kept there.</p>
           <div class="table-wrap" data-slot="accounts"></div>
@@ -134,19 +146,19 @@ export default {
               <h3>Add an account</h3>
               <div class="grid-form settings-grid">
                 <label>Account name<input type="text" name="name" required autocomplete="off"></label>
-                <label>Password<input type="password" name="password" minlength="8" required autocomplete="new-password"></label>
-                <label>Confirm password<input type="password" name="password2" minlength="8" required autocomplete="new-password"></label>
+                <label>Password<input type="password" name="password" minlength="12" required autocomplete="new-password"></label>
+                <label>Confirm password<input type="password" name="password2" minlength="12" required autocomplete="new-password"></label>
               </div>
-              <p class="muted small">That person then opens the site, chooses “Set up this device” and enters a GitHub token, this name and this password.</p>
+              <p class="muted small">They can then sign in on any device with this name and password. Use at least 12 characters.</p>
               <div class="form-actions"><button type="submit" class="btn small">Add account</button></div>
             </form>
             <form data-slot="change-password" autocomplete="off">
               <h3>Change my password</h3>
               <div class="grid-form settings-grid">
-                <label>New password<input type="password" name="password" minlength="8" required autocomplete="new-password"></label>
-                <label>Confirm<input type="password" name="password2" minlength="8" required autocomplete="new-password"></label>
+                <label>New password<input type="password" name="password" minlength="12" required autocomplete="new-password"></label>
+                <label>Confirm<input type="password" name="password2" minlength="12" required autocomplete="new-password"></label>
               </div>
-              <p class="muted small">Other browsers where you are set up will ask you to set them up again with the new password.</p>
+              <p class="muted small">Works on every device right away. At least 12 characters.</p>
               <div class="form-actions"><button type="submit" class="btn small">Change password</button></div>
             </form>
           </div>
@@ -203,7 +215,26 @@ export default {
       } else if (t.dataset.action === 'signout') {
         c.signOut();
       } else if (t.dataset.action === 'forget-device') {
-        if (confirm('Remove the saved GitHub token for your account from this browser? You will need the token to set it up again.')) c.forgetDevice();
+        if (confirm('Remove the GitHub token saved in this browser by “Sign in with a GitHub token”? Signing in with name and password keeps working.')) c.forgetDevice();
+      } else if (t.dataset.action === 'retry-auth') {
+        c.retryAuthSync();
+      } else if (t.dataset.action === 'set-password') {
+        const name = t.dataset.name;
+        openDialog({
+          title: `New password for ${name}`,
+          body: `
+            <p class="muted small">Use this when ${esc(name)} forgot the password. Tell them the new one privately.</p>
+            <div class="grid-form settings-grid">
+              <label>New password<input type="password" name="password" minlength="12" required autocomplete="new-password"></label>
+              <label>Confirm<input type="password" name="password2" minlength="12" required autocomplete="new-password"></label>
+            </div>`,
+          submitLabel: 'Set password',
+          onSubmit: async (form) => {
+            if (form.elements.password.value !== form.elements.password2.value) throw new Error('The passwords do not match.');
+            await c.store.setPassword(name, form.elements.password.value);
+            toast(`Password for ${name} changed`);
+          },
+        });
       } else if (t.dataset.action === 'remove-account') {
         if (confirm(`Remove the account “${t.dataset.name}”? Its password will no longer open the database.`)) {
           busy(t, () => c.store.removeAccount(t.dataset.name), 'Account removed');
@@ -230,6 +261,15 @@ export default {
         await this.ctx.changePassword(f.password.value);
         chg.reset();
       }, 'Password changed');
+    });
+
+    const tok = $(el, '[data-slot=replace-token]');
+    tok.addEventListener('submit', async (ev) => {
+      ev.preventDefault();
+      await busy(tok.querySelector('[type=submit]'), async () => {
+        await this.ctx.replaceToken(tok.elements.token.value);
+        tok.reset();
+      }, 'Token replaced');
     });
 
     const imp = $(el, '[data-slot=import]');
@@ -290,20 +330,39 @@ export default {
     const accounts = [...(ctx.data.accounts || [])].sort((a, b) => a.name.localeCompare(b.name));
     $(el, '[data-slot=accounts]').innerHTML = `
       <table class="table">
-        <thead><tr><th>Account</th><th>Password last set</th><th></th></tr></thead>
+        <thead><tr><th>Account</th><th>Last sign-in</th><th>Password last set</th><th></th></tr></thead>
         <tbody>${accounts.map((a) => `<tr>
           <td>${esc(a.name)}${same(a.name, ctx.user.name) ? ' <span class="badge">you</span>' : ''}</td>
+          <td class="last-login">${a.lastLogin ? esc(dateTimeLabel(a.lastLogin)) : '<span class="muted">never</span>'}</td>
           <td class="muted">${a.updatedAt ? esc(dateLabel(a.updatedAt.slice(0, 10))) : ''}</td>
-          <td class="num">${same(a.name, ctx.user.name) ? '' : `<button class="btn ghost danger small" data-action="remove-account" data-name="${esc(a.name)}">Remove</button>`}</td>
+          <td class="num">${same(a.name, ctx.user.name) ? '' : `
+            <button class="btn ghost small" data-action="set-password" data-name="${esc(a.name)}">Set password</button>
+            <button class="btn ghost danger small" data-action="remove-account" data-name="${esc(a.name)}">Remove</button>`}</td>
         </tr>`).join('')}</tbody>
       </table>`;
+
+    const st = ctx.authStatus;
+    $(el, '[data-slot=auth-status]').innerHTML = !st || st.checking
+      ? '<p class="muted"><span class="spinner inline"></span> Checking password-only sign-in…</p>'
+      : st.ok
+        ? '<p class="status ok">✓ Password-only sign-in is on. Every account signs in on any device with just its name and password.</p>'
+        : `<div class="status warn">
+            <p><strong>Password-only sign-in is off.</strong> The reason: ${esc(st.message)}</p>
+            ${st.sitePermission ? `<ol class="steps small">
+              <li>Open <a href="https://github.com/settings/personal-access-tokens" target="_blank" rel="noopener">GitHub → Fine-grained tokens</a> and click your token.</li>
+              <li>Click <strong>Edit</strong>. Under <strong>Repository access</strong>, add <code>scigen-payroll</code> next to <code>scigen-payroll-data</code>.</li>
+              <li>Permissions stay as they are: <strong>Contents: Read and write</strong> now applies to both. Click <strong>Update</strong>.</li>
+              <li>Come back here and press <strong>Try again</strong>.</li>
+            </ol>` : ''}
+            <div class="form-actions"><button class="btn small" data-action="retry-auth">Try again</button></div>
+          </div>`;
 
     $(el, '[data-slot=account]').innerHTML = `
       <dl class="stats">
         <div><dt>Signed in as</dt><dd>${esc(ctx.user.name)}</dd></div>
       </dl>
       <div class="form-actions">
-        <button class="btn ghost danger small" data-action="forget-device">Forget this device</button>
+        <button class="btn ghost danger small" data-action="forget-device">Remove saved token from this browser</button>
         <span class="spacer"></span>
         <button class="btn small" data-action="signout">Sign out</button>
       </div>`;
