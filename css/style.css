@@ -213,7 +213,7 @@ label.check { flex-direction: row; align-items: center; gap: .5rem; color: var(-
 
 .recent { list-style: none; margin: 0; padding: 0; }
 .recent li + li { border-top: 1px solid var(--border); }
-.recent a { display: grid; grid-template-columns: 6.5rem minmax(0, 1fr) auto; gap: .75rem; padding: .55rem .2rem; color: var(--text); align-items: baseline; }
+.recent a { display: grid; grid-template-columns: 6rem minmax(0, 1fr) auto; gap: .75rem; padding: .55rem .2rem; color: var(--text); align-items: baseline; }
 .recent a:hover { background: var(--surface-2); text-decoration: none; }
 .recent-date { color: var(--muted); font-size: .85rem; }
 .recent-task { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -265,7 +265,7 @@ label.check { flex-direction: row; align-items: center; gap: .5rem; color: var(-
 .table tr.clickable:hover td { background: var(--surface-2); }
 .table tr.current td { background: var(--accent-soft); }
 .table .group-row th { background: var(--surface-2); font-size: .8rem; color: var(--muted); font-weight: 650; }
-.log-table .c-date { white-space: nowrap; width: 7.5rem; color: var(--muted); }
+.log-table .c-date { white-space: nowrap; width: 8.6rem; }
 .log-table .c-task { min-width: 16rem; white-space: pre-line; overflow-wrap: anywhere; }
 .log-table .c-time { white-space: nowrap; width: 4rem; color: var(--muted); }
 .log-table tr:not(.new-day) td { border-top: 0; }
@@ -337,3 +337,16 @@ dialog::backdrop { background: rgba(10, 14, 18, .45); }
 .create-only[hidden] { display: none; }
 .account-forms { margin-top: 1.2rem; padding-top: 1rem; border-top: 1px solid var(--border); }
 .account-forms p { margin: .6rem 0 0; }
+
+/* ------------------------------------------------------------ typed date / time fields */
+.date-wrap { position: relative; display: flex; align-items: stretch; }
+.date-wrap input[data-date] { padding-right: 2.4rem; }
+.cal-btn {
+  position: absolute; right: 1px; top: 1px; bottom: 1px; width: 2.2rem;
+  display: grid; place-items: center; border: 0; background: transparent; color: var(--muted);
+  border-radius: 0 var(--radius-sm) var(--radius-sm) 0; cursor: pointer;
+}
+.cal-btn:hover { color: var(--accent); background: var(--surface-2); }
+.native-picker { position: absolute; right: 0; bottom: 0; width: 1px; height: 1px; opacity: 0; pointer-events: none; border: 0; padding: 0; }
+input.invalid { border-color: var(--danger); box-shadow: 0 0 0 3px color-mix(in srgb, var(--danger) 18%, transparent); }
+.log-table .wd { color: var(--muted); display: inline-block; width: 2.1em; }

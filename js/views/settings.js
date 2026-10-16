@@ -1,4 +1,4 @@
-import { esc, monthLabel, todayISO } from '../format.js';
+import { esc, monthLabel, todayISO, dateLabel } from '../format.js';
 import { withDefaults, monthOf } from '../calc.js';
 import { busy, toast, download, toCSV, $ } from '../ui.js';
 
@@ -193,11 +193,11 @@ export default {
         const rows = [...c.data.entries].sort((a, b) => (a.date || '').localeCompare(b.date || '') || (a.start || '').localeCompare(b.start || ''));
         download(`scigen-entries-${stamp}.csv`, toCSV([
           ['Date', 'Counted in month', 'Task', 'Start', 'Finish', 'Minutes', 'Hours', 'Flag'],
-          ...rows.map((e) => [e.date, e.month, e.task, e.start, e.finish, e.minutes, Math.round((e.minutes / 60) * 1000) / 1000, e.flag || '']),
+          ...rows.map((e) => [dateLabel(e.date), e.month, e.task, e.start, e.finish, e.minutes, Math.round((e.minutes / 60) * 1000) / 1000, e.flag || '']),
         ]), 'text/csv');
       } else if (t.dataset.action === 'export-expenses') {
         const rows = [...c.data.expenses].sort((a, b) => (a.date || '').localeCompare(b.date || ''));
-        download(`scigen-expenses-${stamp}.csv`, toCSV([['Date', 'Description', 'Amount'], ...rows.map((x) => [x.date, x.description, x.amount])]), 'text/csv');
+        download(`scigen-expenses-${stamp}.csv`, toCSV([['Date', 'Description', 'Amount'], ...rows.map((x) => [dateLabel(x.date), x.description, x.amount])]), 'text/csv');
       } else if (t.dataset.action === 'clear-month') {
         busy(t, () => c.store.saveMonth(t.dataset.month, {}), 'Manual values cleared');
       } else if (t.dataset.action === 'signout') {
@@ -293,7 +293,7 @@ export default {
         <thead><tr><th>Account</th><th>Password last set</th><th></th></tr></thead>
         <tbody>${accounts.map((a) => `<tr>
           <td>${esc(a.name)}${same(a.name, ctx.user.name) ? ' <span class="badge">you</span>' : ''}</td>
-          <td class="muted">${a.updatedAt ? esc(a.updatedAt.slice(0, 10)) : ''}</td>
+          <td class="muted">${a.updatedAt ? esc(dateLabel(a.updatedAt.slice(0, 10))) : ''}</td>
           <td class="num">${same(a.name, ctx.user.name) ? '' : `<button class="btn ghost danger small" data-action="remove-account" data-name="${esc(a.name)}">Remove</button>`}</td>
         </tr>`).join('')}</tbody>
       </table>`;

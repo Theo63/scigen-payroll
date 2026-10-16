@@ -1,4 +1,4 @@
-import { esc, monthLabel, dateLabel, todayISO } from '../format.js';
+import { esc, monthLabel, dateLabel, weekdayLabel, todayISO } from '../format.js';
 import { addMonths, monthOf } from '../calc.js';
 import { entryFieldsHTML, wireEntryForm, readEntryForm, busy, openDialog, $ } from '../ui.js';
 
@@ -187,7 +187,7 @@ export default {
             const otherMonth = (e.month || monthOf(e.date)) !== monthOf(e.date);
             return `
             <tr class="clickable ${showDate ? 'new-day' : ''}" data-id="${esc(e.id)}" tabindex="0">
-              <td class="c-date">${showDate ? esc(dateLabel(e.date, crossMonth)) : ''}
+              <td class="c-date">${showDate ? `<span class="wd">${esc(weekdayLabel(e.date))}</span> ${esc(dateLabel(e.date))}` : ''}
                 ${otherMonth ? `<span class="badge warn" title="Counted in ${esc(monthLabel(e.month))}">→ ${esc(monthLabel(e.month, true))}</span>` : ''}</td>
               <td class="c-task">${e.flag ? `<span class="flag" title="${esc(e.flag)}">⚠</span> ` : ''}${esc(e.task || '—')}
                 ${e.flag && crossMonth ? `<div class="muted small">${esc(e.flag)}</div>` : ''}</td>
@@ -214,7 +214,7 @@ export default {
     const entry = this.ctx.data.entries.find((e) => e.id === id);
     if (!entry) return;
     openDialog({
-      title: `Edit entry · ${dateLabel(entry.date, true)}`,
+      title: `Edit entry · ${dateLabel(entry.date)}`,
       body: entryFieldsHTML(entry, { showMonth: true }),
       onOpen: (form) => wireEntryForm(form),
       onSubmit: async (form) => {

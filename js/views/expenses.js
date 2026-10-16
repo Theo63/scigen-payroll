@@ -1,11 +1,11 @@
-import { esc, dateLabel, todayISO, monthLabel } from '../format.js';
+import { esc, dateLabel, todayISO, todayDMY, monthLabel } from '../format.js';
 import { contractYearStart, addMonths, monthOf } from '../calc.js';
-import { busy, openDialog, $ } from '../ui.js';
+import { busy, openDialog, dateFieldHTML, wireDateTime, readDate, $ } from '../ui.js';
 
 function expenseFieldsHTML(x = {}) {
   return `
     <div class="grid-form expense-form">
-      <label class="f-date">Date<input type="date" name="date" value="${esc(x.date || todayISO())}" required></label>
+      <label class="f-date">Date${dateFieldHTML('date', x.date || todayISO())}</label>
       <label class="f-amount">Amount<input type="number" name="amount" step="0.01" inputmode="decimal" value="${x.amount ?? ''}" required></label>
       <label class="f-desc">What<input type="text" name="description" value="${esc(x.description || '')}" placeholder="e.g. MacBook Air" required></label>
     </div>`;
@@ -14,9 +14,9 @@ function expenseFieldsHTML(x = {}) {
 function readExpenseForm(form) {
   const f = form.elements;
   const amount = Number(f.amount.value);
-  if (!f.date.value) throw new Error('Pick a date.');
+  const date = readDate(f.date);
   if (!Number.isFinite(amount) || f.amount.value === '') throw new Error('Enter an amount.');
-  return { date: f.date.value, amount, description: f.description.value.trim() };
+  return { date, amount, description: f.description.value.trim() };
 }
 
 export default {
@@ -37,12 +37,13 @@ export default {
       </section>`;
 
     const form = $(el, '.add-form');
+    wireDateTime(form);
     form.addEventListener('submit', async (ev) => {
       ev.preventDefault();
       await busy(form.querySelector('[type=submit]'), async () => {
         await ctx.store.addExpense(readExpenseForm(form));
         form.reset();
-        form.elements.date.value = todayISO();
+        form.elements.date.value = todayDMY();
       }, 'Expense added');
     });
 
@@ -81,7 +82,7 @@ export default {
               <th class="num">${fmt.money(rows.reduce((a, x) => a + (Number(x.amount) || 0), 0))}</th></tr>
             ${rows.map((x) => `
               <tr class="clickable" data-id="${esc(x.id)}" tabindex="0">
-                <td>${esc(dateLabel(x.date, true))}</td>
+                <td>${esc(dateLabel(x.date))}</td>
                 <td>${esc(x.description || '—')}</td>
                 <td class="num">${fmt.money(x.amount)}</td>
               </tr>`).join('')}
@@ -101,6 +102,7 @@ export default {
     openDialog({
       title: 'Edit expense',
       body: expenseFieldsHTML(x),
+      onOpen: (form) => wireDateTime(form),
       onSubmit: (form) => ctx.store.updateExpense(id, readExpenseForm(form)),
       danger: { label: 'Delete', confirm: `Delete “${x.description}”?`, onClick: () => ctx.store.deleteExpense(id) },
     });

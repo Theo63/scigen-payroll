@@ -1,4 +1,4 @@
-import { esc, monthLabel, dateLabel, todayISO } from '../format.js';
+import { esc, monthLabel, dateLabel, todayISO, todayDMY } from '../format.js';
 
 import { entryFieldsHTML, wireEntryForm, readEntryForm, busy, $ } from '../ui.js';
 
@@ -39,7 +39,7 @@ export default {
         const entry = readEntryForm(form);
         await ctx.store.addEntry(entry);
         form.reset();
-        form.elements.date.value = todayISO();
+        form.elements.date.value = todayDMY();
       }, 'Entry added');
     });
     this.update(el, ctx);
